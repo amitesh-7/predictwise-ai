@@ -8,14 +8,14 @@ import ExamTemplateSelector from "@/components/ExamTemplateSelector";
 import GradientOrbs from "@/components/GradientOrbs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { Upload, FileText, Image, X, Loader2, ArrowRight, CheckCircle, AlertCircle, ScanLine, Sparkles, CloudUpload, Lock, LogIn } from "lucide-react";
+import { Upload, FileText, Image, X, Loader2, ArrowRight, CheckCircle, AlertCircle, Sparkles, CloudUpload, Lock, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadedFile } from "@/types";
 import type { ExamTemplate, Subject } from "@/data/examTemplates";
 
 const UploadPage = () => {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [examName, setExamName] = useState("");
@@ -23,7 +23,6 @@ const UploadPage = () => {
   const [subjectCode, setSubjectCode] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<ExamTemplate | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
-  const [useOCR, setUseOCR] = useState(false);
 
   const handleTemplateSelect = (template: ExamTemplate, subj: Subject | null) => {
     setSelectedTemplate(template);
@@ -50,13 +49,7 @@ const UploadPage = () => {
     }));
     setFiles((prev) => [...prev, ...newFiles]);
     toast.success(`${acceptedFiles.length} file(s) added`);
-    
-    const hasImages = acceptedFiles.some(f => f.type.startsWith("image/"));
-    if (hasImages && !useOCR) {
-      setUseOCR(true);
-      toast.info("OCR enabled for image files");
-    }
-  }, [useOCR, user]);
+  }, [user]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -75,16 +68,33 @@ const UploadPage = () => {
       return;
     }
     
-    if (files.length < 2) { toast.error("Please upload at least 2 question papers"); return; }
-    if (!examName || !subject || !subjectCode) { toast.error("Please fill in all fields"); return; }
+    if (files.length < 2) { 
+      toast.error("Please upload at least 2 question papers"); 
+      return; 
+    }
+    
+    if (!examName.trim()) { 
+      toast.error("Please enter the exam name"); 
+      return; 
+    }
+    
+    if (!subject.trim()) { 
+      toast.error("Please enter the subject name"); 
+      return; 
+    }
+    
+    if (!subjectCode.trim()) { 
+      toast.error("Please enter the subject code"); 
+      return; 
+    }
 
     setIsProcessing(true);
     try {
       const formData = new FormData();
-      formData.append('examName', examName);
-      formData.append('subject', subject);
-      formData.append('subjectCode', subjectCode);
-      formData.append('useOCR', useOCR.toString());
+      formData.append('examName', examName.trim());
+      formData.append('subject', subject.trim());
+      formData.append('subjectCode', subjectCode.trim());
+      formData.append('useOCR', 'true'); // Always enable OCR
       files.forEach((file) => {
         formData.append('files', file.file);
         formData.append(`year_${file.file.name}`, file.year || new Date().getFullYear().toString());
@@ -92,12 +102,27 @@ const UploadPage = () => {
 
       setFiles(prev => prev.map(f => ({ ...f, status: "processing" })));
       const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
-      const response = await fetch(`${API_BASE}/api/analyze`, { method: 'POST', body: formData });
+      
+      // Build headers with auth token
+      const headers: HeadersInit = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      
+      const response = await fetch(`${API_BASE}/api/analyze`, { 
+        method: 'POST', 
+        body: formData,
+        headers
+      });
 
       if (!response.ok) {
         let errMsg = response.statusText;
-        try { const body = await response.text(); const json = JSON.parse(body); errMsg = json.error || json.message || body; } catch {}
-        throw new Error(`Analysis failed: ${errMsg}`);
+        try { 
+          const body = await response.text(); 
+          const json = JSON.parse(body); 
+          errMsg = json.message || json.error || body; 
+        } catch {}
+        throw new Error(errMsg);
       }
 
       const result = await response.json();
@@ -105,6 +130,7 @@ const UploadPage = () => {
       toast.success("Analysis complete!");
       setTimeout(() => navigate("/dashboard", { state: { subjectCode, analysis: result.analysis, subject } }), 1500);
     } catch (error: any) {
+      console.error('Analysis error:', error);
       toast.error(error?.message || 'Analysis failed');
       setFiles(prev => prev.map(f => ({ ...f, status: "error" })));
     } finally {
@@ -294,48 +320,11 @@ const UploadPage = () => {
               </div>
             </motion.div>
 
-            {/* OCR Toggle */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="glass-card p-5 rounded-2xl mb-8"
-            >
-              <label className="flex items-center justify-between cursor-pointer">
-                <div className="flex items-center gap-4">
-                  <motion.div 
-                    animate={{ rotate: useOCR ? 360 : 0 }}
-                    transition={{ duration: 0.5 }}
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${useOCR ? 'bg-gradient-primary' : 'bg-muted'}`}
-                  >
-                    <ScanLine className={`w-6 h-6 ${useOCR ? 'text-white' : 'text-muted-foreground'}`} />
-                  </motion.div>
-                  <div>
-                    <p className="font-semibold">Enable OCR for Scanned PDFs</p>
-                    <p className="text-sm text-muted-foreground">Use optical character recognition for image-based documents</p>
-                  </div>
-                </div>
-                <div className="relative">
-                  <input type="checkbox" checked={useOCR} onChange={(e) => setUseOCR(e.target.checked)} className="sr-only" />
-                  <motion.div 
-                    animate={{ backgroundColor: useOCR ? 'hsl(var(--primary))' : 'hsl(var(--muted))' }}
-                    className="w-14 h-8 rounded-full p-1"
-                  >
-                    <motion.div 
-                      animate={{ x: useOCR ? 24 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      className="w-6 h-6 rounded-full bg-white shadow-lg"
-                    />
-                  </motion.div>
-                </div>
-              </label>
-            </motion.div>
-
             {/* Dropzone */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
+              transition={{ delay: 0.3 }}
             >
               <div 
                 {...getRootProps()} 
@@ -502,7 +491,7 @@ const UploadPage = () => {
                       {isProcessing ? (
                         <>
                           <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                          Analyzing{useOCR ? ' with OCR' : ''}...
+                          Analyzing...
                         </>
                       ) : (
                         <>
@@ -518,11 +507,6 @@ const UploadPage = () => {
                         </>
                       )}
                     </Button>
-                    {useOCR && (
-                      <p className="text-sm text-muted-foreground mt-3">
-                        OCR processing may take longer for scanned documents
-                      </p>
-                    )}
                   </motion.div>
                 </motion.div>
               )}

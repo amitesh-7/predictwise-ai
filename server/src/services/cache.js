@@ -2,12 +2,12 @@ const crypto = require('crypto');
 
 /**
  * Simple In-Memory Cache Service
- * For production, replace with Redis
+ * Cache is now user-specific to prevent data leakage between users
  */
 
 // In-memory cache store
 const cache = new Map();
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_TTL = 1 * 60 * 60 * 1000; // 1 hour (reduced from 24 hours)
 
 /**
  * Generate hash from file buffer
@@ -18,14 +18,15 @@ function generateFileHash(buffer) {
 
 /**
  * Generate cache key from multiple files
+ * Now includes userId to make cache user-specific
  */
-function generateCacheKey(files, subject, examName) {
+function generateCacheKey(files, subject, examName, userId = 'anonymous') {
   const fileHashes = files.map(f => generateFileHash(f.buffer)).sort().join('-');
   const contextHash = crypto.createHash('md5')
-    .update(`${subject}-${examName}`)
+    .update(`${subject}-${examName}-${userId}`)
     .digest('hex')
     .substring(0, 8);
-  return `analysis:${fileHashes.substring(0, 32)}:${contextHash}`;
+  return `analysis:${userId}:${fileHashes.substring(0, 32)}:${contextHash}`;
 }
 
 /**
@@ -42,7 +43,7 @@ function getCachedAnalysis(key) {
     return null;
   }
   
-  console.log(`📦 Cache hit for key: ${key.substring(0, 20)}...`);
+  console.log(`📦 Cache hit for key: ${key.substring(0, 30)}...`);
   return cached.data;
 }
 
@@ -56,11 +57,27 @@ function cacheAnalysis(key, data, ttl = CACHE_TTL) {
     createdAt: Date.now()
   });
   
-  console.log(`💾 Cached analysis with key: ${key.substring(0, 20)}...`);
+  console.log(`💾 Cached analysis with key: ${key.substring(0, 30)}...`);
   
   // Cleanup old entries periodically
   if (cache.size > 100) {
     cleanupExpiredEntries();
+  }
+}
+
+/**
+ * Invalidate cache for a specific user
+ */
+function invalidateUserCache(userId) {
+  let cleared = 0;
+  for (const key of cache.keys()) {
+    if (key.includes(`:${userId}:`)) {
+      cache.delete(key);
+      cleared++;
+    }
+  }
+  if (cleared > 0) {
+    console.log(`🗑️ Cleared ${cleared} cache entries for user ${userId}`);
   }
 }
 
@@ -98,7 +115,7 @@ function getCacheStats() {
   return {
     size: cache.size,
     entries: Array.from(cache.entries()).map(([key, value]) => ({
-      key: key.substring(0, 30) + '...',
+      key: key.substring(0, 40) + '...',
       createdAt: new Date(value.createdAt).toISOString(),
       expiresAt: new Date(value.expiresAt).toISOString(),
       isExpired: Date.now() > value.expiresAt
@@ -111,6 +128,7 @@ module.exports = {
   generateCacheKey,
   getCachedAnalysis,
   cacheAnalysis,
+  invalidateUserCache,
   clearCache,
   getCacheStats,
   cleanupExpiredEntries
