@@ -71,6 +71,18 @@ async function extractTextFromPDF(pdfBuffer) {
     const ai = initializeGemini();
     const model = ai.getGenerativeModel({ model: MODEL_NAME });
     
+    // Check PDF size - Gemini has limits
+    const sizeMB = pdfBuffer.length / (1024 * 1024);
+    if (sizeMB > 4) {
+      console.log(`   ⚠️ PDF too large (${sizeMB.toFixed(1)}MB), skipping Gemini OCR`);
+      return {
+        text: '',
+        success: false,
+        error: 'PDF too large for vision API (max 4MB)',
+        method: 'gemini-vision'
+      };
+    }
+    
     const base64Pdf = pdfBuffer.toString('base64');
     
     console.log('   Sending PDF to Gemini Vision...');
