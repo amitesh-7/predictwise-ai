@@ -16,7 +16,7 @@ const HeroSection = () => {
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden mesh-gradient">
       <GradientOrbs variant="hero" />
       
-      {/* Floating Icons */}
+      {/* Floating Icons - hidden on mobile */}
       {floatingIcons.map((item, index) => (
         <motion.div
           key={index}
@@ -29,29 +29,29 @@ const HeroSection = () => {
           <motion.div
             animate={{ y: [0, -15, 0], rotate: [0, 5, 0] }}
             transition={{ duration: 4 + index, repeat: Infinity, ease: "easeInOut" }}
-            className="glass-card p-4 rounded-2xl"
+            className="glass-card p-3 sm:p-4 rounded-xl sm:rounded-2xl"
           >
-            <item.icon className="w-6 h-6 text-primary" />
+            <item.icon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
           </motion.div>
         </motion.div>
       ))}
 
-      <div className="container mx-auto px-4 pt-24 pb-16 relative z-10">
+      <div className="container mx-auto px-4 pt-20 sm:pt-24 pb-12 sm:pb-16 relative z-10">
         <div className="max-w-5xl mx-auto text-center">
           {/* Badge */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card mb-8"
+            className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full glass-card mb-6 sm:mb-8"
           >
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
             >
-              <Sparkles className="w-4 h-4 text-primary" />
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" />
             </motion.div>
-            <span className="text-sm font-medium">AI-Powered Question Prediction</span>
+            <span className="text-xs sm:text-sm font-medium">AI-Powered Question Prediction</span>
           </motion.div>
 
           {/* Main Heading */}
@@ -59,13 +59,13 @@ const HeroSection = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
+            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight"
           >
             Predict Your{" "}
-            <span className="relative">
+            <span className="relative inline-block">
               <span className="text-gradient">Exam Questions</span>
               <motion.svg
-                className="absolute -bottom-2 left-0 w-full"
+                className="absolute -bottom-1 sm:-bottom-2 left-0 w-full"
                 viewBox="0 0 300 12"
                 initial={{ pathLength: 0, opacity: 0 }}
                 animate={{ pathLength: 1, opacity: 1 }}
@@ -88,7 +88,7 @@ const HeroSection = () => {
               </motion.svg>
             </span>
             <br />
-            <span className="text-muted-foreground">with AI Precision</span>
+            <span className="text-muted-foreground text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl">with AI Precision</span>
           </motion.h1>
 
           {/* Subtitle */}
@@ -96,7 +96,7 @@ const HeroSection = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10"
+            className="text-sm sm:text-base md:text-lg lg:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-10 px-2"
           >
             Upload your previous year question papers and let our AI analyze patterns 
             to predict the most likely questions for your upcoming exams.
@@ -107,21 +107,21 @@ const HeroSection = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4"
           >
-            <Link to="/upload">
+            <Link to="/upload" className="w-full sm:w-auto">
               <Button 
                 variant="hero" 
                 size="lg" 
-                className="group relative overflow-hidden text-lg px-8 py-6 rounded-2xl shadow-glow"
+                className="group relative overflow-hidden text-sm sm:text-base md:text-lg px-6 sm:px-8 py-4 sm:py-5 md:py-6 rounded-xl sm:rounded-2xl shadow-glow w-full sm:w-auto"
               >
-                <span className="relative z-10 flex items-center gap-2">
+                <span className="relative z-10 flex items-center justify-center gap-2">
                   Start Analyzing
                   <motion.span
                     animate={{ x: [0, 5, 0] }}
                     transition={{ duration: 1.5, repeat: Infinity }}
                   >
-                    <ArrowRight className="w-5 h-5" />
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
                   </motion.span>
                 </span>
                 <motion.div
@@ -132,11 +132,11 @@ const HeroSection = () => {
                 />
               </Button>
             </Link>
-            <Link to="/dashboard">
+            <Link to="/dashboard" className="w-full sm:w-auto">
               <Button 
                 variant="outline" 
                 size="lg" 
-                className="text-lg px-8 py-6 rounded-2xl glass-card hover:shadow-elevated"
+                className="text-sm sm:text-base md:text-lg px-6 sm:px-8 py-4 sm:py-5 md:py-6 rounded-xl sm:rounded-2xl glass-card hover:shadow-elevated w-full sm:w-auto"
               >
                 View Demo
               </Button>
@@ -148,7 +148,7 @@ const HeroSection = () => {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.5 }}
-            className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto"
+            className="mt-12 sm:mt-16 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 max-w-3xl mx-auto"
           >
             {[
               { value: "95%", label: "Accuracy Rate" },
@@ -162,31 +162,31 @@ const HeroSection = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.6 + index * 0.1 }}
                 whileHover={{ scale: 1.05 }}
-                className="glass-card p-4 rounded-2xl text-center"
+                className="glass-card p-3 sm:p-4 rounded-xl sm:rounded-2xl text-center"
               >
-                <div className="text-2xl md:text-3xl font-bold text-gradient">{stat.value}</div>
-                <div className="text-sm text-muted-foreground">{stat.label}</div>
+                <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gradient">{stat.value}</div>
+                <div className="text-[10px] sm:text-xs md:text-sm text-muted-foreground">{stat.label}</div>
               </motion.div>
             ))}
           </motion.div>
         </div>
 
-        {/* Scroll Indicator */}
+        {/* Scroll Indicator - hidden on mobile */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.5 }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2"
+          className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 hidden sm:block"
         >
           <motion.div
             animate={{ y: [0, 10, 0] }}
             transition={{ duration: 2, repeat: Infinity }}
-            className="w-6 h-10 rounded-full border-2 border-muted-foreground/30 flex items-start justify-center p-2"
+            className="w-5 h-8 sm:w-6 sm:h-10 rounded-full border-2 border-muted-foreground/30 flex items-start justify-center p-1.5 sm:p-2"
           >
             <motion.div
               animate={{ y: [0, 12, 0], opacity: [1, 0, 1] }}
               transition={{ duration: 2, repeat: Infinity }}
-              className="w-1.5 h-1.5 rounded-full bg-primary"
+              className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-primary"
             />
           </motion.div>
         </motion.div>
