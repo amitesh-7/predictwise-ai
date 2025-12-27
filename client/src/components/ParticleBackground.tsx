@@ -8,13 +8,15 @@ interface Particle {
   radius: number;
   color: string;
   alpha: number;
+  pulsePhase: number;
 }
 
 const ParticleBackground = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
-  const mouseRef = useRef({ x: 0, y: 0 });
+  const mouseRef = useRef({ x: -1000, y: -1000 });
   const animationRef = useRef<number>();
+  const timeRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -29,42 +31,63 @@ const ParticleBackground = () => {
     };
 
     const colors = [
-      'rgba(99, 102, 241, 0.6)',   // Primary purple
-      'rgba(168, 85, 247, 0.5)',   // Accent purple
-      'rgba(59, 130, 246, 0.5)',   // Blue
-      'rgba(14, 165, 233, 0.4)',   // Cyan
-      'rgba(236, 72, 153, 0.4)',   // Pink
+      { r: 99, g: 102, b: 241 },   // Primary indigo
+      { r: 168, g: 85, b: 247 },   // Purple
+      { r: 59, g: 130, b: 246 },   // Blue
+      { r: 14, g: 165, b: 233 },   // Cyan
+      { r: 236, g: 72, b: 153 },   // Pink
+      { r: 139, g: 92, b: 246 },   // Violet
     ];
 
     const createParticles = () => {
-      const particleCount = Math.min(80, Math.floor((canvas.width * canvas.height) / 15000));
+      const particleCount = Math.min(100, Math.floor((canvas.width * canvas.height) / 12000));
       particlesRef.current = [];
 
       for (let i = 0; i < particleCount; i++) {
+        const color = colors[Math.floor(Math.random() * colors.length)];
         particlesRef.current.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.5,
-          vy: (Math.random() - 0.5) * 0.5,
-          radius: Math.random() * 2 + 1,
-          color: colors[Math.floor(Math.random() * colors.length)],
-          alpha: Math.random() * 0.5 + 0.2,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
+          radius: Math.random() * 2.5 + 1,
+          color: `${color.r}, ${color.g}, ${color.b}`,
+          alpha: Math.random() * 0.6 + 0.2,
+          pulsePhase: Math.random() * Math.PI * 2,
         });
       }
     };
 
-    const drawParticle = (p: Particle) => {
+    const drawParticle = (p: Particle, time: number) => {
       if (!ctx) return;
+      
+      // Pulsing effect
+      const pulse = Math.sin(time * 0.002 + p.pulsePhase) * 0.3 + 0.7;
+      const currentAlpha = p.alpha * pulse;
+      const currentRadius = p.radius * (0.8 + pulse * 0.4);
+      
+      // Glow effect
+      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, currentRadius * 3);
+      gradient.addColorStop(0, `rgba(${p.color}, ${currentAlpha})`);
+      gradient.addColorStop(0.5, `rgba(${p.color}, ${currentAlpha * 0.3})`);
+      gradient.addColorStop(1, `rgba(${p.color}, 0)`);
+      
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
+      ctx.arc(p.x, p.y, currentRadius * 3, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Core
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, currentRadius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color}, ${currentAlpha})`;
       ctx.fill();
     };
 
-    const drawConnections = () => {
+    const drawConnections = (time: number) => {
       if (!ctx) return;
       const particles = particlesRef.current;
-      const maxDistance = 150;
+      const maxDistance = 120;
 
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
@@ -73,25 +96,35 @@ const ParticleBackground = () => {
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < maxDistance) {
-            const opacity = (1 - distance / maxDistance) * 0.15;
+            const opacity = (1 - distance / maxDistance) * 0.12;
+            const wave = Math.sin(time * 0.001 + i * 0.1) * 0.5 + 0.5;
+            
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(99, 102, 241, ${opacity})`;
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = `rgba(99, 102, 241, ${opacity * wave})`;
+            ctx.lineWidth = 0.8;
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
             ctx.stroke();
           }
         }
 
-        // Connect to mouse
+        // Mouse connection with gradient
         const dx = particles[i].x - mouseRef.current.x;
         const dy = particles[i].y - mouseRef.current.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < 200) {
-          const opacity = (1 - distance / 200) * 0.3;
+        if (distance < 180 && mouseRef.current.x > 0) {
+          const opacity = (1 - distance / 180) * 0.4;
+          
+          const gradient = ctx.createLinearGradient(
+            particles[i].x, particles[i].y,
+            mouseRef.current.x, mouseRef.current.y
+          );
+          gradient.addColorStop(0, `rgba(168, 85, 247, ${opacity})`);
+          gradient.addColorStop(1, `rgba(99, 102, 241, ${opacity * 0.5})`);
+          
           ctx.beginPath();
-          ctx.strokeStyle = `rgba(168, 85, 247, ${opacity})`;
+          ctx.strokeStyle = gradient;
           ctx.lineWidth = 1.5;
           ctx.moveTo(particles[i].x, particles[i].y);
           ctx.lineTo(mouseRef.current.x, mouseRef.current.y);
@@ -104,38 +137,57 @@ const ParticleBackground = () => {
       const particles = particlesRef.current;
 
       particles.forEach((p) => {
+        // Smooth floating motion
         p.x += p.vx;
         p.y += p.vy;
 
-        // Bounce off edges
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        // Soft bounce off edges
+        if (p.x < 0) { p.x = 0; p.vx *= -0.8; }
+        if (p.x > canvas.width) { p.x = canvas.width; p.vx *= -0.8; }
+        if (p.y < 0) { p.y = 0; p.vy *= -0.8; }
+        if (p.y > canvas.height) { p.y = canvas.height; p.vy *= -0.8; }
 
-        // Mouse interaction - gentle push
-        const dx = p.x - mouseRef.current.x;
-        const dy = p.y - mouseRef.current.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        // Mouse interaction - smooth attraction/repulsion
+        if (mouseRef.current.x > 0) {
+          const dx = p.x - mouseRef.current.x;
+          const dy = p.y - mouseRef.current.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < 100) {
-          const force = (100 - distance) / 100;
-          p.vx += (dx / distance) * force * 0.02;
-          p.vy += (dy / distance) * force * 0.02;
+          if (distance < 150 && distance > 0) {
+            const force = (150 - distance) / 150;
+            // Gentle push away
+            p.vx += (dx / distance) * force * 0.015;
+            p.vy += (dy / distance) * force * 0.015;
+          }
         }
 
+        // Add slight random movement for organic feel
+        p.vx += (Math.random() - 0.5) * 0.01;
+        p.vy += (Math.random() - 0.5) * 0.01;
+
+        // Damping
+        p.vx *= 0.99;
+        p.vy *= 0.99;
+
         // Limit velocity
-        const maxVel = 1.5;
-        p.vx = Math.max(-maxVel, Math.min(maxVel, p.vx));
-        p.vy = Math.max(-maxVel, Math.min(maxVel, p.vy));
+        const maxVel = 1;
+        const vel = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (vel > maxVel) {
+          p.vx = (p.vx / vel) * maxVel;
+          p.vy = (p.vy / vel) * maxVel;
+        }
       });
     };
 
     const animate = () => {
       if (!ctx || !canvas) return;
+      
+      timeRef.current += 16;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      drawConnections();
-      particlesRef.current.forEach(drawParticle);
+      drawConnections(timeRef.current);
+      particlesRef.current.forEach(p => drawParticle(p, timeRef.current));
       updateParticles();
 
       animationRef.current = requestAnimationFrame(animate);
@@ -143,6 +195,10 @@ const ParticleBackground = () => {
 
     const handleMouseMove = (e: MouseEvent) => {
       mouseRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleMouseLeave = () => {
+      mouseRef.current = { x: -1000, y: -1000 };
     };
 
     const handleResize = () => {
@@ -155,10 +211,12 @@ const ParticleBackground = () => {
     animate();
 
     window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseleave', handleMouseLeave);
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseleave', handleMouseLeave);
       window.removeEventListener('resize', handleResize);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
@@ -169,8 +227,8 @@ const ParticleBackground = () => {
   return (
     <canvas
       ref={canvasRef}
-      id="particles-canvas"
       className="fixed inset-0 pointer-events-none z-0"
+      style={{ background: 'transparent' }}
     />
   );
 };

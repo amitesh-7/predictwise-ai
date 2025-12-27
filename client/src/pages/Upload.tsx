@@ -5,7 +5,7 @@ import { useNavigate, Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ExamTemplateSelector from "@/components/ExamTemplateSelector";
-import GradientOrbs from "@/components/GradientOrbs";
+import ParticleBackground from "@/components/ParticleBackground";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Upload, FileText, Image, X, Loader2, ArrowRight, CheckCircle, AlertCircle, Sparkles, CloudUpload, Lock, LogIn } from "lucide-react";
@@ -162,11 +162,12 @@ const UploadPage = () => {
   // Show sign-in prompt if not authenticated
   if (!user) {
     return (
-      <div className="min-h-screen bg-background relative overflow-hidden">
-        <GradientOrbs variant="page" />
-        <Navbar />
+      <div className="min-h-screen bg-background relative">
+        <ParticleBackground />
+        <div className="relative z-10">
+          <Navbar />
         
-        <main className="pt-24 pb-16 relative z-10">
+        <main className="pt-24 pb-16">
           <div className="container mx-auto px-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -230,15 +231,17 @@ const UploadPage = () => {
           </div>
         </main>
         <Footer />
+        </div>
       </div>
     );
   }
 
   // Authenticated user view
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      <GradientOrbs variant="page" />
-      <Navbar />
+    <div className="min-h-screen bg-background relative">
+      <ParticleBackground />
+      <div className="relative z-10">
+        <Navbar />
       
       <main className="pt-24 pb-16 relative z-10">
         <div className="container mx-auto px-4">
@@ -515,6 +518,7 @@ const UploadPage = () => {
         </div>
       </main>
       <Footer />
+      </div>
     </div>
   );
 };

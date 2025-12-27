@@ -88,6 +88,17 @@ function normalizeText(text) {
   return text
     // Remove zero-width characters
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    // Remove OCR garbage patterns like "i. si. 9 2 5" or "I K3 C PTS"
+    .replace(/^[a-zA-Z]\s*\.\s*[a-zA-Z]{1,3}\s*\.\s*[\d\s]+/gim, '')
+    .replace(/[A-Z]\s+[A-Z0-9]{1,3}\s+[A-Z]\s+[A-Z]{2,4}\s+[A-Z]/g, '')
+    // Remove lines that are mostly garbage (more symbols than letters)
+    .split('\n')
+    .filter(line => {
+      const letters = (line.match(/[a-zA-Z]/g) || []).length;
+      const symbols = (line.match(/[^a-zA-Z0-9\s]/g) || []).length;
+      return letters > symbols * 2 || line.length < 10;
+    })
+    .join('\n')
     // Normalize whitespace
     .replace(/\s+/g, ' ')
     // Fix common OCR errors
@@ -155,10 +166,16 @@ function isValidQuestion(text) {
   const trimmed = text.trim();
   
   // Length checks
-  if (trimmed.length < 15 || trimmed.length > 500) return false;
+  if (trimmed.length < 20 || trimmed.length > 500) return false;
   
-  // Must have some alphabetic content
-  if (!/[a-zA-Z]{3,}/.test(trimmed)) return false;
+  // Must start with a letter (not garbage)
+  if (!/^[A-Za-z]/.test(trimmed)) return false;
+  
+  // Must have some alphabetic content (at least 5 letter words)
+  if (!/[a-zA-Z]{4,}/.test(trimmed)) return false;
+  
+  // Should have at least 5 words
+  if (trimmed.split(/\s+/).length < 5) return false;
   
   // Filter out non-questions
   const lower = trimmed.toLowerCase();
@@ -169,9 +186,14 @@ function isValidQuestion(text) {
   // Filter out if it's just numbers and symbols
   if (/^[\d\s\.\,\-\+\=\(\)]+$/.test(trimmed)) return false;
   
-  // Filter out very short "questions" that are likely headers
-  const wordCount = trimmed.split(/\s+/).length;
-  if (wordCount < 4 && !trimmed.includes('?')) return false;
+  // Reject OCR garbage patterns
+  if (/^[a-zA-Z]\s*\.\s*[a-zA-Z]{1,3}\s*\./i.test(trimmed)) return false;
+  if (/[A-Z]\s+[A-Z0-9]{1,2}\s+[A-Z]\s+[A-Z]{2,3}\s+[A-Z]/.test(trimmed)) return false;
+  
+  // Check ratio of letters to total characters (should be mostly letters)
+  const letters = (trimmed.match(/[a-zA-Z]/g) || []).length;
+  const total = trimmed.length;
+  if (letters / total < 0.5) return false;
   
   return true;
 }
