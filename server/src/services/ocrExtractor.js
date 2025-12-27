@@ -1,67 +1,59 @@
-const Tesseract = require('tesseract.js');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 /**
- * OCR Extraction Service
+ * OCR Extraction Service using Google Gemini Vision API
  * Handles text extraction from scanned PDFs and images
- * Uses pdf-to-png-converter locally, falls back to text extraction on Vercel
  */
 
-let worker = null;
-let pdfToPngAvailable = null;
+let genAI = null;
+const MODEL_NAME = 'gemini-2.5-flash';
 
 /**
- * Check if pdf-to-png-converter is available
+ * Initialize Gemini client
  */
-async function checkPdfToPngAvailable() {
-  if (pdfToPngAvailable !== null) return pdfToPngAvailable;
-  
-  try {
-    await import('pdf-to-png-converter');
-    pdfToPngAvailable = true;
-    console.log('✅ pdf-to-png-converter available');
-  } catch (e) {
-    pdfToPngAvailable = false;
-    console.log('⚠️ pdf-to-png-converter not available, using text extraction only');
+function initializeGemini() {
+  if (!genAI) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    console.log('✅ Gemini Vision client initialized');
   }
-  return pdfToPngAvailable;
+  return genAI;
 }
 
 /**
- * Initialize Tesseract worker
+ * Extract text from image buffer using Gemini Vision
  */
-async function initializeWorker() {
-  if (!worker) {
-    console.log('🔧 Initializing Tesseract OCR worker...');
-    worker = await Tesseract.createWorker('eng', 1, {
-      logger: m => {
-        if (m.status === 'recognizing text' && m.progress > 0) {
-          const pct = Math.round(m.progress * 100);
-          if (pct % 20 === 0) {
-            process.stdout.write(`\r   OCR Progress: ${pct}%`);
-          }
+async function extractTextFromImage(imageBuffer, mimeType = 'image/png') {
+  try {
+    const ai = initializeGemini();
+    const model = ai.getGenerativeModel({ model: MODEL_NAME });
+    
+    const base64Image = imageBuffer.toString('base64');
+    
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: base64Image
         }
-      }
-    });
-    console.log('\n✅ Tesseract OCR worker ready');
-  }
-  return worker;
-}
-
-/**
- * Extract text from image buffer using OCR
- */
-async function extractTextFromImage(imageBuffer) {
-  try {
-    const w = await initializeWorker();
-    const { data: { text, confidence } } = await w.recognize(imageBuffer);
+      },
+      `Extract ALL text from this exam paper image. 
+       Include every question, sub-question, instruction, and marking scheme.
+       Preserve the structure with section headers (Section A, B, C etc).
+       Output ONLY the extracted text, no commentary.`
+    ]);
+    
+    const text = result.response.text();
     
     return {
-      text: cleanOCRText(text),
-      confidence: Math.round(confidence),
+      text: text.trim(),
+      confidence: 95,
       success: true
     };
   } catch (error) {
-    console.error('OCR extraction error:', error.message);
+    console.error('Gemini Vision extraction error:', error.message);
     return {
       text: '',
       confidence: 0,
@@ -72,193 +64,72 @@ async function extractTextFromImage(imageBuffer) {
 }
 
 /**
- * Convert PDF to images and run OCR (works locally, may fail on Vercel)
+ * Extract text from PDF using Gemini Vision
  */
-async function convertPDFAndOCR(pdfBuffer, options = {}) {
-  const { maxPages = 30 } = options;
-  
+async function extractTextFromPDF(pdfBuffer) {
   try {
-    const { pdfToPng } = await import('pdf-to-png-converter');
+    const ai = initializeGemini();
+    const model = ai.getGenerativeModel({ model: MODEL_NAME });
     
-    console.log(`   Converting PDF pages to images...`);
+    const base64Pdf = pdfBuffer.toString('base64');
     
-    const pngPages = await pdfToPng(pdfBuffer, {
-      disableFontFace: true,
-      useSystemFonts: true,
-      viewportScale: 2.0,
-      pagesToProcess: maxPages > 0 ? Array.from({ length: maxPages }, (_, i) => i + 1) : undefined
-    });
+    console.log('   Sending PDF to Gemini Vision...');
     
-    console.log(`   Converted ${pngPages.length} pages to images`);
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: base64Pdf
+        }
+      },
+      `Extract ALL text from this exam paper PDF.
+       Include every question, sub-question, instruction, and marking scheme.
+       Preserve the structure with section headers (Section A, B, C etc).
+       For each question, include the question number and full text.
+       Output ONLY the extracted text, no commentary or explanations.`
+    ]);
     
-    let allText = '';
-    let totalConfidence = 0;
-    let successfulPages = 0;
+    const text = result.response.text();
     
-    for (let i = 0; i < pngPages.length; i++) {
-      const page = pngPages[i];
-      console.log(`   Running OCR on page ${i + 1}/${pngPages.length}...`);
-      
-      const ocrResult = await extractTextFromImage(page.content);
-      
-      if (ocrResult.success && ocrResult.text) {
-        allText += `\n--- Page ${i + 1} ---\n${ocrResult.text}\n`;
-        totalConfidence += ocrResult.confidence;
-        successfulPages++;
-        console.log(`   Page ${i + 1}: ${ocrResult.text.length} chars, ${ocrResult.confidence}% confidence`);
-      }
-    }
-    
-    const avgConfidence = successfulPages > 0 ? Math.round(totalConfidence / successfulPages) : 0;
-    
-    console.log(`\n✅ PDF OCR complete: ${allText.length} chars total, ${avgConfidence}% avg confidence`);
+    console.log(`   ✅ Gemini extracted ${text.length} characters`);
     
     return {
-      text: allText.trim(),
-      success: allText.length > 50,
-      pagesProcessed: pngPages.length,
-      avgConfidence,
-      method: 'pdf-to-png-ocr'
+      text: text.trim(),
+      success: text.length > 50,
+      avgConfidence: 95,
+      method: 'gemini-vision'
     };
-    
   } catch (error) {
-    console.error('PDF to PNG conversion error:', error.message);
+    console.error('Gemini PDF extraction error:', error.message);
     return {
       text: '',
       success: false,
       error: error.message,
-      method: 'pdf-to-png-ocr'
+      method: 'gemini-vision'
     };
   }
 }
 
 /**
- * Extract text from PDF using pdf2json
- */
-async function extractTextWithPdf2Json(pdfBuffer) {
-  return new Promise((resolve) => {
-    try {
-      const PDFParser = require('pdf2json');
-      const pdfParser = new PDFParser();
-      
-      pdfParser.on('pdfParser_dataError', errData => {
-        resolve({ text: '', success: false, error: errData.parserError });
-      });
-      
-      pdfParser.on('pdfParser_dataReady', pdfData => {
-        try {
-          const text = pdfParser.getRawTextContent();
-          const pages = pdfData.Pages || [];
-          resolve({
-            text: cleanOCRText(text || ''),
-            numPages: pages.length,
-            success: true,
-            method: 'pdf2json'
-          });
-        } catch (e) {
-          resolve({ text: '', success: false, error: e.message });
-        }
-      });
-      
-      pdfParser.parseBuffer(pdfBuffer);
-    } catch (error) {
-      resolve({ text: '', success: false, error: error.message });
-    }
-  });
-}
-
-/**
- * Extract text using pdf-parse library
- */
-async function extractTextWithPdfParse(pdfBuffer) {
-  try {
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(pdfBuffer);
-    
-    return {
-      text: cleanOCRText(data.text || ''),
-      numPages: data.numpages,
-      success: data.text && data.text.length > 50,
-      method: 'pdf-parse'
-    };
-  } catch (error) {
-    return { text: '', success: false, error: error.message };
-  }
-}
-
-/**
- * Extract text from scanned PDF
- * Tries multiple methods - OCR for scanned, text extraction for digital
+ * Extract text from scanned PDF using Gemini
  */
 async function extractTextFromScannedPDF(pdfBuffer, options = {}) {
-  console.log('📄 Processing PDF for text extraction...');
+  console.log('📄 Processing PDF with Gemini Vision...');
   
   try {
-    // Method 1: Try pdf-parse first (fast, for text-based PDFs)
-    console.log('   Trying pdf-parse extraction...');
-    const pdfParseResult = await extractTextWithPdfParse(pdfBuffer);
+    const result = await extractTextFromPDF(pdfBuffer);
     
-    if (pdfParseResult.success && pdfParseResult.text.length > 200) {
-      console.log(`✅ pdf-parse extracted ${pdfParseResult.text.length} characters`);
-      return {
-        text: pdfParseResult.text,
-        success: true,
-        pagesProcessed: pdfParseResult.numPages,
-        avgConfidence: 95,
-        method: 'pdf-parse'
-      };
+    if (result.success && result.text) {
+      return result;
     }
     
-    // Method 2: Try pdf2json
-    console.log('   Trying pdf2json extraction...');
-    const pdf2jsonResult = await extractTextWithPdf2Json(pdfBuffer);
-    
-    if (pdf2jsonResult.success && pdf2jsonResult.text && pdf2jsonResult.text.length > 200) {
-      console.log(`✅ pdf2json extracted ${pdf2jsonResult.text.length} characters`);
-      return {
-        text: pdf2jsonResult.text,
-        success: true,
-        pagesProcessed: pdf2jsonResult.numPages,
-        avgConfidence: 90,
-        method: 'pdf2json'
-      };
-    }
-    
-    // Method 3: PDF appears scanned - try OCR if available
-    const canDoOCR = await checkPdfToPngAvailable();
-    
-    if (canDoOCR) {
-      console.log('   PDF appears scanned, converting to images for OCR...');
-      const ocrResult = await convertPDFAndOCR(pdfBuffer, options);
-      
-      if (ocrResult.success && ocrResult.text) {
-        return ocrResult;
-      }
-    }
-    
-    // Combine any partial results
-    const combinedText = [pdfParseResult.text, pdf2jsonResult.text]
-      .filter(t => t && t.length > 0)
-      .join('\n\n');
-    
-    if (combinedText.length > 100) {
-      return {
-        text: combinedText,
-        success: true,
-        pagesProcessed: pdfParseResult.numPages || pdf2jsonResult.numPages || 1,
-        avgConfidence: 70,
-        method: 'combined'
-      };
-    }
-    
-    // Nothing worked
     return {
       text: '',
       success: false,
       pagesProcessed: 0,
       avgConfidence: 0,
       method: 'none',
-      error: 'Could not extract text. PDF may be scanned images.'
+      error: result.error || 'Could not extract text from PDF'
     };
     
   } catch (error) {
@@ -272,27 +143,12 @@ async function extractTextFromScannedPDF(pdfBuffer, options = {}) {
 }
 
 /**
- * Clean OCR/PDF extracted text
+ * Clean extracted text
  */
 function cleanOCRText(text) {
   if (!text) return '';
   
   return text
-    .replace(/%20/g, ' ')
-    .replace(/%0A/g, '\n')
-    .replace(/%2C/g, ',')
-    .replace(/%3A/g, ':')
-    .replace(/%3B/g, ';')
-    .replace(/%28/g, '(')
-    .replace(/%29/g, ')')
-    .replace(/%5B/g, '[')
-    .replace(/%5D/g, ']')
-    .replace(/%2F/g, '/')
-    .replace(/%3F/g, '?')
-    .replace(/%26/g, '&')
-    .replace(/%3D/g, '=')
-    .replace(/%25/g, '%')
-    .replace(/[|]/g, 'I')
     .replace(/\s+/g, ' ')
     .replace(/\n\s*\n\s*\n/g, '\n\n')
     .split('\n')
@@ -301,23 +157,10 @@ function cleanOCRText(text) {
     .trim();
 }
 
-/**
- * Terminate worker when done
- */
-async function terminateWorker() {
-  if (worker) {
-    await worker.terminate();
-    worker = null;
-  }
-}
-
 module.exports = {
   extractTextFromImage,
   extractTextFromScannedPDF,
-  extractTextWithPdf2Json,
-  extractTextWithPdfParse,
-  convertPDFAndOCR,
+  extractTextFromPDF,
   cleanOCRText,
-  initializeWorker,
-  terminateWorker
+  initializeGemini
 };

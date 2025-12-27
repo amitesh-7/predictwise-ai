@@ -213,9 +213,12 @@ router.post('/',
       
       updateProgress(jobId, 85, 'Running AI analysis...');
       
+      // Combine all extracted text for AI analysis
+      const combinedText = allExtractedText.join('\n\n--- NEW PAPER ---\n\n');
+      
       // Analyze with AI - always fresh, no caching
       console.log('\n🤖 Starting AI analysis...');
-      const aiAnalysis = await analyzeWithAI(questionsForAI, subject, examName);
+      const aiAnalysis = await analyzeWithAI(combinedText, subject, examName);
       
       if (aiAnalysis.error) {
         console.log(`⚠️ AI analysis warning: ${aiAnalysis.error}`);
