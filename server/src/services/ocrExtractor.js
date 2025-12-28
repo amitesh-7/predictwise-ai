@@ -23,6 +23,13 @@ function initializeGemini() {
 }
 
 /**
+ * Sleep helper for retry delays
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
  * Extract text from image buffer using Gemini Vision
  */
 async function extractTextFromImage(imageBuffer, mimeType = 'image/png') {
@@ -64,21 +71,25 @@ async function extractTextFromImage(imageBuffer, mimeType = 'image/png') {
 }
 
 /**
- * Extract text from PDF using Gemini Vision
+ * Extract text from PDF using Gemini Vision with retry
  */
-async function extractTextFromPDF(pdfBuffer) {
+async function extractTextFromPDF(pdfBuffer, retryCount = 0) {
+  const MAX_RETRIES = 2;
+  
   try {
     const ai = initializeGemini();
     const model = ai.getGenerativeModel({ model: MODEL_NAME });
     
-    // Check PDF size - Gemini has limits
+    // Check PDF size - Gemini has limits (20MB for PDFs)
     const sizeMB = pdfBuffer.length / (1024 * 1024);
-    if (sizeMB > 4) {
-      console.log(`   ⚠️ PDF too large (${sizeMB.toFixed(1)}MB), skipping Gemini OCR`);
+    console.log(`   PDF size: ${sizeMB.toFixed(2)} MB`);
+    
+    if (sizeMB > 20) {
+      console.log(`   ⚠️ PDF too large (${sizeMB.toFixed(1)}MB), max 20MB`);
       return {
         text: '',
         success: false,
-        error: 'PDF too large for vision API (max 4MB)',
+        error: 'PDF too large for vision API (max 20MB)',
         method: 'gemini-vision'
       };
     }
@@ -94,25 +105,50 @@ async function extractTextFromPDF(pdfBuffer) {
           data: base64Pdf
         }
       },
-      `Extract ALL text from this exam paper PDF.
-       Include every question, sub-question, instruction, and marking scheme.
-       Preserve the structure with section headers (Section A, B, C etc).
-       For each question, include the question number and full text.
-       Output ONLY the extracted text, no commentary or explanations.`
+      `You are an OCR system. Extract ALL text from this exam paper PDF exactly as it appears.
+
+INSTRUCTIONS:
+1. Extract every question with its number (Q1, Q2, 1., 2., etc.)
+2. Include all sub-parts (a), (b), (c) or (i), (ii), (iii)
+3. Preserve section headers (Section A, Section B, etc.)
+4. Include marks allocation if shown [2 marks], (5 marks), etc.
+5. Extract mathematical expressions as text (e.g., dy/dx, x^2, integral)
+6. Include any instructions or notes
+
+OUTPUT: Only the extracted text, nothing else. No explanations or commentary.`
     ]);
     
     const text = result.response.text();
+    
+    if (!text || text.length < 50) {
+      throw new Error('Insufficient text extracted');
+    }
     
     console.log(`   ✅ Gemini extracted ${text.length} characters`);
     
     return {
       text: text.trim(),
-      success: text.length > 50,
+      success: true,
+      pagesProcessed: 1,
       avgConfidence: 95,
       method: 'gemini-vision'
     };
   } catch (error) {
-    console.error('Gemini PDF extraction error:', error.message);
+    console.error(`   ❌ Gemini PDF extraction error (attempt ${retryCount + 1}):`, error.message);
+    
+    // Retry on rate limit or temporary errors
+    if (retryCount < MAX_RETRIES && (
+      error.message.includes('429') || 
+      error.message.includes('quota') ||
+      error.message.includes('rate') ||
+      error.message.includes('temporarily')
+    )) {
+      const delay = (retryCount + 1) * 5000; // 5s, 10s delays
+      console.log(`   ⏳ Retrying in ${delay/1000}s...`);
+      await sleep(delay);
+      return extractTextFromPDF(pdfBuffer, retryCount + 1);
+    }
+    
     return {
       text: '',
       success: false,
@@ -130,26 +166,14 @@ async function extractTextFromScannedPDF(pdfBuffer, options = {}) {
   
   try {
     const result = await extractTextFromPDF(pdfBuffer);
-    
-    if (result.success && result.text) {
-      return result;
-    }
-    
-    return {
-      text: '',
-      success: false,
-      pagesProcessed: 0,
-      avgConfidence: 0,
-      method: 'none',
-      error: result.error || 'Could not extract text from PDF'
-    };
-    
+    return result;
   } catch (error) {
     console.error('PDF extraction error:', error);
     return {
       text: '',
       success: false,
-      error: error.message
+      error: error.message,
+      method: 'gemini-vision'
     };
   }
 }

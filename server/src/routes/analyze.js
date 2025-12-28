@@ -106,29 +106,22 @@ router.post('/',
         
         // Handle different file types
         if (file.mimetype === 'application/pdf') {
-          // First try normal text extraction
-          const pdfResult = await extractTextFromPDF(file.buffer);
-          text = pdfResult.text;
-          numPages = pdfResult.numPages;
+          // For PDFs, always use Gemini Vision OCR (best for scanned docs)
+          console.log(`   🔍 Using Gemini Vision for PDF extraction...`);
+          updateProgress(jobId, progress, `Extracting text from ${file.originalname}...`);
           
-          console.log(`   Text extraction: ${text.length} characters from ${numPages} pages`);
+          const ocrResult = await extractTextFromScannedPDF(file.buffer, {
+            maxPages: 30
+          });
           
-          // Always try OCR if text extraction got little content
-          if (!text || text.length < 200) {
-            console.log(`   🔍 Trying OCR extraction...`);
-            updateProgress(jobId, progress, `Running OCR on ${file.originalname}...`);
-            
-            const ocrResult = await extractTextFromScannedPDF(file.buffer, {
-              maxPages: 30
-            });
-            
-            if (ocrResult.text && ocrResult.text.length > text.length) {
-              text = ocrResult.text;
-              numPages = ocrResult.pagesProcessed || numPages;
-              extractionMethod = 'ocr';
-              ocrUsed = true;
-              console.log(`   ✅ OCR extracted: ${text.length} chars`);
-            }
+          if (ocrResult.success && ocrResult.text) {
+            text = ocrResult.text;
+            numPages = ocrResult.pagesProcessed || 1;
+            extractionMethod = 'gemini-vision';
+            ocrUsed = true;
+            console.log(`   ✅ Extracted: ${text.length} chars`);
+          } else {
+            console.log(`   ❌ Extraction failed: ${ocrResult.error || 'Unknown error'}`);
           }
         } else if (file.mimetype.startsWith('image/')) {
           console.log(`   🔍 Running OCR on image...`);
@@ -200,13 +193,13 @@ router.post('/',
         console.log(`   Created ${questionsForAI.length} text segments for analysis`);
       }
       
-      if (questionsForAI.length === 0) {
+      if (allExtractedText.length === 0) {
         console.log('❌ No text could be extracted from any file!');
         failJob(jobId, 'No text could be extracted');
         return res.status(400).json({
           success: false,
           error: 'No text extracted',
-          message: 'Could not extract any text from the uploaded files. The PDFs may be scanned images. Please try converting them to images (PNG/JPG) first using a tool like Adobe Acrobat or an online PDF to image converter, then upload the images.',
+          message: 'Could not extract text from the uploaded files. Please check that the files are valid PDFs and try again. If the issue persists, the Gemini API may be temporarily unavailable.',
           fileResults
         });
       }

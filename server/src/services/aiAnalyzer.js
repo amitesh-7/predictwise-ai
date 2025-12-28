@@ -18,61 +18,60 @@ function initializeGemini() {
 }
 
 /**
- * Generate analysis prompt for AKTU-style papers
+ * Generate analysis prompt - completely dynamic based on extracted content
  */
 function generateAnalysisPrompt(extractedText, subject, examName) {
-  return `You are an expert exam paper analyzer for AKTU (Dr. A.P.J. Abdul Kalam Technical University) B.Tech examinations.
+  return `You are an expert exam paper analyzer and predictor.
 
-SUBJECT: ${subject || 'Mathematics-IV / Engineering Mathematics'}
-EXAM: ${examName || 'B.Tech 3rd Semester End Term Examination'}
+SUBJECT: ${subject || 'Unknown Subject'}
+EXAM: ${examName || 'University Examination'}
 
-I have extracted text from multiple previous year question papers. Analyze this content and generate a PREDICTED QUESTION PAPER for the upcoming exam.
+I have extracted text from previous year question papers. Analyze this content and generate a PREDICTED QUESTION PAPER for the upcoming exam.
 
 EXTRACTED TEXT FROM PREVIOUS PAPERS:
 """
-${extractedText.substring(0, 8000)}
+${extractedText.substring(0, 12000)}
 """
 
-TASK: Based on the above content, generate a complete predicted question paper following AKTU format.
+YOUR TASK:
+1. ANALYZE the extracted text to understand what subject/topics it covers
+2. IDENTIFY the actual questions, topics, and patterns from the text
+3. GENERATE predicted questions based ONLY on what you see in the extracted text
+4. DO NOT assume or add topics that are not present in the extracted content
 
-AKTU PAPER FORMAT:
-- Section A: 10 questions × 2 marks = 20 marks (Very Short Answer - definitions, formulas, basic concepts)
-- Section B: 5 questions × 10 marks = 50 marks (Long Answer - derivations, proofs, numerical problems)
-  Note: Section B has "Attempt any 4 out of 5" or similar choice
+IMPORTANT RULES:
+- Generate questions ONLY related to topics found in the extracted text
+- If the text is about Human Values, generate Human Values questions
+- If the text is about Physics, generate Physics questions
+- If the text is about any other subject, generate questions for THAT subject
+- DO NOT generate Mathematics questions unless the extracted text is about Mathematics
+- Match the style and format of questions from the extracted text
 
-IMPORTANT INSTRUCTIONS:
-1. Extract ACTUAL questions from the text - look for numbered questions (1., 2., Q1, Q2, etc.)
-2. Identify the SPECIFIC topics covered (Laplace Transform, Fourier Series, PDE, Statistics, etc.)
-3. Generate questions that are SPECIFIC and DETAILED - not generic
-4. Include mathematical expressions where needed (write as: dy/dx, d²y/dx², ∫, Σ, etc.)
-5. Questions should be exam-worthy and match AKTU difficulty level
+PAPER FORMAT (adapt based on extracted content):
+- Section A: Short Answer Questions (2 marks each) - definitions, brief explanations
+- Section B: Medium/Long Answer Questions (5-10 marks each) - detailed explanations, essays
 
-EXAMPLES OF GOOD SPECIFIC QUESTIONS:
-- "Find the Laplace transform of t²e^(-3t)sin(2t)."
-- "Solve the PDE: ∂²u/∂x² + ∂²u/∂y² = 0 subject to boundary conditions u(0,y)=0, u(a,y)=0, u(x,0)=0, u(x,b)=sin(πx/a)."
-- "A random variable X has the probability density function f(x) = kx²(1-x) for 0≤x≤1. Find k and P(X>0.5)."
-- "Using Newton-Raphson method, find the root of x³-2x-5=0 correct to 4 decimal places."
-
-EXAMPLES OF BAD GENERIC QUESTIONS (DO NOT GENERATE):
-- "Solve the given differential equation using an appropriate method."
-- "Calculate the probability for the given random experiment."
-- "Apply the appropriate transform method."
+For each question:
+- Make it SPECIFIC based on the actual content from the papers
+- Use terminology and concepts from the extracted text
+- Match the difficulty level seen in the papers
 
 Return ONLY this JSON structure:
 {
   "predictions": [
     {
-      "topic": "Specific Topic Name",
-      "question": "Complete specific question with all details and values",
+      "topic": "Actual topic from the extracted text",
+      "question": "Specific question based on the content",
       "difficulty": "Easy|Medium|Hard",
       "probability": 0.85,
       "type": "Short Answer|Long Answer",
       "marks": 2,
       "section": "A",
-      "rationale": "Why this question is likely to appear"
+      "rationale": "Why this question is likely based on the papers"
     }
   ],
   "summary": ["Topic1", "Topic2", "Topic3", "Topic4", "Topic5"],
+  "detectedSubject": "The subject detected from the content",
   "paperStructure": {
     "totalMarks": 70,
     "duration": "3 hours",
@@ -83,27 +82,35 @@ Return ONLY this JSON structure:
   }
 }
 
-Generate exactly 15 questions:
-- 10 questions for Section A (2 marks each, short answer type)
-- 5 questions for Section B (10 marks each, long answer type)
+Generate 15 questions total:
+- 10 for Section A (short answer, 2 marks)
+- 5 for Section B (long answer, 10 marks)
 
-Each question must be SPECIFIC with actual values, functions, or scenarios - NOT generic templates.`;
+Base ALL questions on the actual content extracted. Do not invent topics not present in the text.`;
 }
 
 /**
- * Analyze questions with Gemini
+ * Analyze with Gemini
  */
 async function analyzeWithAI(extractedText, subject, examName) {
   const geminiModel = initializeGemini();
   
   if (!extractedText || extractedText.length < 100) {
     console.log('⚠️ Insufficient text to analyze');
-    return generateSmartFallback(subject);
+    return {
+      predictions: [],
+      summary: [],
+      error: 'Insufficient text extracted from documents'
+    };
   }
   
   if (!geminiModel) {
-    console.log('⚠️ Gemini not configured, using smart fallback');
-    return generateSmartFallback(subject);
+    console.log('⚠️ Gemini not configured');
+    return {
+      predictions: [],
+      summary: [],
+      error: 'AI service not configured'
+    };
   }
   
   try {
@@ -118,7 +125,7 @@ async function analyzeWithAI(extractedText, subject, examName) {
       }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 6000,
+        maxOutputTokens: 8000,
         responseMimeType: 'application/json'
       }
     });
@@ -131,7 +138,32 @@ async function analyzeWithAI(extractedText, subject, examName) {
     // Clean up response
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
-    const parsed = JSON.parse(content);
+    // Try to fix common JSON issues
+    try {
+      // Fix unterminated strings by finding incomplete strings at the end
+      if (content.lastIndexOf('"') > content.lastIndexOf('"}')) {
+        content = content.substring(0, content.lastIndexOf('"')) + '"}]}';
+      }
+    } catch (e) {}
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (parseError) {
+      console.error('JSON parse error, attempting to extract predictions...');
+      // Try to extract predictions array manually
+      const predictionsMatch = content.match(/"predictions"\s*:\s*\[([\s\S]*?)\]/);
+      if (predictionsMatch) {
+        try {
+          const fixedContent = `{"predictions": [${predictionsMatch[1]}], "summary": []}`;
+          parsed = JSON.parse(fixedContent);
+        } catch (e) {
+          throw new Error('Could not parse AI response');
+        }
+      } else {
+        throw parseError;
+      }
+    }
     
     if (!parsed.predictions || !Array.isArray(parsed.predictions)) {
       throw new Error('Invalid response structure from Gemini');
@@ -148,70 +180,114 @@ async function analyzeWithAI(extractedText, subject, examName) {
         type: p.type || (p.section === 'A' ? 'Short Answer' : 'Long Answer'),
         marks: p.marks || (p.section === 'A' ? 2 : 10),
         rationale: p.rationale || 'Based on previous year analysis',
-        section: ['A', 'B'].includes(p.section) ? p.section : (i < 10 ? 'A' : 'B')
+        section: ['A', 'B', 'C'].includes(p.section) ? p.section : (i < 10 ? 'A' : 'B')
       }))
-      .filter(p => p.question.length > 20);
+      .filter(p => p.question.length > 15);
+    
+    // Update subject if detected
+    if (parsed.detectedSubject) {
+      console.log(`   Detected subject: ${parsed.detectedSubject}`);
+    }
     
     console.log(`✅ Generated ${parsed.predictions.length} predictions`);
     
     return parsed;
   } catch (error) {
     console.error('❌ Gemini analysis error:', error.message);
-    return generateSmartFallback(subject);
+    
+    // Try to generate fallback based on extracted text
+    return generateDynamicFallback(extractedText, subject);
   }
 }
 
 /**
- * Generate smart fallback predictions for Mathematics-IV
+ * Generate dynamic fallback based on extracted text
  */
-function generateSmartFallback(subject) {
-  console.log('📊 Generating smart fallback predictions...');
+function generateDynamicFallback(extractedText, subject) {
+  console.log('📊 Generating dynamic fallback predictions...');
   
-  const sectionA = [
-    { topic: 'Laplace Transform', question: 'Find the Laplace transform of t·sin(at).', marks: 2 },
-    { topic: 'Inverse Laplace', question: 'Find L⁻¹{1/(s²+4s+13)}.', marks: 2 },
-    { topic: 'Fourier Series', question: 'State Dirichlet conditions for Fourier series expansion.', marks: 2 },
-    { topic: 'PDE Formation', question: 'Form the partial differential equation by eliminating arbitrary constants from z = ax + by + ab.', marks: 2 },
-    { topic: 'Probability', question: 'Define mutually exclusive and independent events with examples.', marks: 2 },
-    { topic: 'Random Variable', question: 'Define probability density function and state its properties.', marks: 2 },
-    { topic: 'Normal Distribution', question: 'Write the probability density function of normal distribution and state its properties.', marks: 2 },
-    { topic: 'Correlation', question: 'Define correlation coefficient and give its range.', marks: 2 },
-    { topic: 'Hypothesis Testing', question: 'Define null hypothesis and alternative hypothesis.', marks: 2 },
-    { topic: 'Chi-Square Test', question: 'State the formula for chi-square test statistic.', marks: 2 }
-  ];
+  // Extract key topics/words from the text
+  const words = extractedText.toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 4);
   
-  const sectionB = [
-    { topic: 'Laplace Transform Application', question: 'Using Laplace transform, solve the differential equation d²y/dt² + 4dy/dt + 3y = e⁻ᵗ, given y(0) = 1, y\'(0) = 0.', marks: 10 },
-    { topic: 'Fourier Series', question: 'Find the Fourier series expansion of f(x) = x² in the interval (-π, π) and hence show that π²/6 = 1 + 1/4 + 1/9 + 1/16 + ...', marks: 10 },
-    { topic: 'Partial Differential Equations', question: 'Solve the wave equation ∂²u/∂t² = c²(∂²u/∂x²) subject to conditions u(0,t) = 0, u(L,t) = 0, u(x,0) = f(x), ∂u/∂t(x,0) = 0.', marks: 10 },
-    { topic: 'Probability Distribution', question: 'The probability density function of a random variable X is f(x) = kx²e⁻ˣ for x ≥ 0. Find: (i) value of k, (ii) mean, (iii) variance, (iv) P(X > 2).', marks: 10 },
-    { topic: 'Regression Analysis', question: 'Fit a straight line y = a + bx to the following data using least squares method and estimate y when x = 6: x: 1, 2, 3, 4, 5 and y: 2, 5, 3, 8, 7.', marks: 10 }
-  ];
+  // Count word frequency
+  const wordCount = {};
+  words.forEach(w => {
+    wordCount[w] = (wordCount[w] || 0) + 1;
+  });
   
-  const predictions = [
-    ...sectionA.map((q, i) => ({
+  // Get top topics (most frequent meaningful words)
+  const stopWords = new Set(['which', 'their', 'about', 'would', 'there', 'these', 'being', 'between', 'through', 'during', 'before', 'after', 'above', 'below', 'should', 'could', 'might', 'must', 'shall', 'will', 'have', 'been', 'were', 'they', 'them', 'this', 'that', 'with', 'from', 'your', 'what', 'when', 'where', 'write', 'explain', 'define', 'discuss', 'describe', 'marks', 'answer', 'question', 'following', 'given']);
+  
+  const topTopics = Object.entries(wordCount)
+    .filter(([word]) => !stopWords.has(word))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
+  
+  // Generate questions based on detected topics
+  const predictions = [];
+  const questionTemplates = {
+    sectionA: [
+      'Define {topic} and explain its significance.',
+      'What do you understand by {topic}?',
+      'List the key characteristics of {topic}.',
+      'Explain the concept of {topic} briefly.',
+      'What is the importance of {topic}?',
+      'Define {topic} with examples.',
+      'What are the main features of {topic}?',
+      'Briefly explain {topic}.',
+      'What is meant by {topic}?',
+      'State the meaning of {topic}.'
+    ],
+    sectionB: [
+      'Discuss {topic} in detail with suitable examples.',
+      'Explain the role of {topic} in modern context. Elaborate with examples.',
+      'What is {topic}? Discuss its importance and applications.',
+      'Critically analyze the concept of {topic} and its relevance.',
+      'Write a detailed note on {topic} with appropriate examples.'
+    ]
+  };
+  
+  // Generate Section A questions
+  for (let i = 0; i < 10 && i < topTopics.length; i++) {
+    const topic = topTopics[i];
+    const template = questionTemplates.sectionA[i % questionTemplates.sectionA.length];
+    predictions.push({
       id: i + 1,
-      ...q,
+      topic: topic,
+      question: template.replace('{topic}', topic.toLowerCase()),
       difficulty: 'Easy',
-      probability: 0.80 + Math.random() * 0.15,
-      type: 'Short Answer',
-      section: 'A',
-      rationale: 'Frequently asked in AKTU exams'
-    })),
-    ...sectionB.map((q, i) => ({
-      id: i + 11,
-      ...q,
-      difficulty: 'Hard',
       probability: 0.75 + Math.random() * 0.15,
+      type: 'Short Answer',
+      marks: 2,
+      section: 'A',
+      rationale: `Topic "${topic}" appears frequently in the uploaded papers`
+    });
+  }
+  
+  // Generate Section B questions
+  for (let i = 0; i < 5 && i < topTopics.length; i++) {
+    const topic = topTopics[i];
+    const template = questionTemplates.sectionB[i % questionTemplates.sectionB.length];
+    predictions.push({
+      id: 11 + i,
+      topic: topic,
+      question: template.replace('{topic}', topic.toLowerCase()),
+      difficulty: 'Hard',
+      probability: 0.70 + Math.random() * 0.15,
       type: 'Long Answer',
+      marks: 10,
       section: 'B',
-      rationale: 'Important topic for long answer section'
-    }))
-  ];
+      rationale: `Important topic for detailed answer based on paper analysis`
+    });
+  }
   
   return {
     predictions,
-    summary: ['Laplace Transform', 'Fourier Series', 'Partial Differential Equations', 'Probability & Statistics', 'Regression Analysis'],
+    summary: topTopics.slice(0, 5),
     paperStructure: {
       totalMarks: 70,
       duration: '3 hours',
@@ -225,7 +301,6 @@ function generateSmartFallback(subject) {
 
 module.exports = {
   analyzeWithAI,
-  generateSmartFallback,
   generateAnalysisPrompt,
   initializeGemini
 };
